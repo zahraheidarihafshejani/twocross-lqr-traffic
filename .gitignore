@@ -1,0 +1,24 @@
+
+# MATLAB autosave and backup
+*.asv
+*.m~
+# MATLAB preferences / temporary files
+*.autosave
+*.tmp
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# SUMO temporary & generated output files
+*.log
+*.dump.xml
+*.tripinfo.xml
+*.summary.xml
+*.queue.xml
+*.out.xml
+
