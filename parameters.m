@@ -1,6 +1,6 @@
 clear; clc;
 
-sumo_dir = 'C:\twoCross-trafficControl';
+sumo_dir = 'C:\twocross-lqr-traffic';
 net_file = fullfile(sumo_dir, 'twocross.net.xml');
 
 if ~exist(net_file, 'file')
@@ -20,8 +20,8 @@ S_exact = zeros(num_edges, 1);
 x_max_exact = zeros(num_edges, 1);
 
 for i = 1:edges.getLength()
-    edgeNode = edges.item(i-1);
-    
+    edgeNode = edges.item(i - 1); 
+
     if edgeNode.hasAttributes()
         edge_id = char(edgeNode.getAttribute('id'));
         idx = find(strcmp(target_edges, edge_id));

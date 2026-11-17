@@ -1,14 +1,13 @@
-function results = simulate_network(mode, K, num_cycles, show_gui)
+function results = simulate_network(mode, ctrl, num_cycles, show_gui)
 
 if nargin < 4, show_gui = false; end
 if nargin < 3, num_cycles = 15; end
 
-sumo_dir = 'C:\twoCross-trafficControl';
+sumo_dir = 'C:\twocross-lqr-traffic';
 sumocfg_file = fullfile(sumo_dir, 'twocross.sumocfg');
 
 try py.traci.close(); catch; end
 
-% Initialize SUMO simulation via TraCI
 sumo_bin = 'sumo';
 if show_gui, sumo_bin = 'sumo-gui'; end
 cmd = py.list({sumo_bin, '-c', sumocfg_file, '--start', '--seed', '42'});
@@ -26,8 +25,9 @@ queue_log = zeros(num_cycles, 8);
 wait_log = zeros(num_cycles, 8);
 green_log = zeros(num_cycles, 4);
 
+prev_x = [];
+prev_delta = zeros(2, 1);
 
-% Main simulation loop over cycles
 for cyc = 1:num_cycles
     x_k = zeros(8, 1);
     w_k = zeros(8, 1);
@@ -39,26 +39,38 @@ for cyc = 1:num_cycles
     wait_log(cyc, :) = w_k';
     
     if strcmpi(mode, 'lqr')
-        u = -K * x_k;
-        
+        u = -ctrl * x_k;
         delta_g0 = max(-12, min(12, (u(1) - u(2))));
-        g0_NS = round(g0_base + delta_g0);
-        g0_NS = max(15, min((C - lost_time_0) - 15, g0_NS));
-        g0_EW = (C - lost_time_0) - g0_NS;
-        
         delta_g5 = max(-12, min(12, (u(3) - u(4))));
-        g5_NS = round(g5_base + delta_g5);
-        g5_NS = max(15, min((C - lost_time_5) - 15, g5_NS));
-        g5_EW = (C - lost_time_5) - g5_NS;
+        
+    elseif strcmpi(mode, 'mpc')
+        drift = zeros(8, 1);
+        if ~isempty(prev_x)
+            drift = x_k - prev_x - ctrl.Bd * prev_delta;
+        end
+        
+        % Clean call via mpc solver handle
+        delta = ctrl.solve(x_k, drift, cyc);
+        delta_g0 = delta(1);
+        delta_g5 = delta(2);
+        
+        prev_x = x_k;
+        prev_delta = delta;
     else
-        g0_NS = g0_base;
-        g0_EW = g0_base;
-        g5_NS = g5_base;
-        g5_EW = g5_base;
+        delta_g0 = 0;
+        delta_g5 = 0;
     end
+    
+    g0_NS = round(g0_base + delta_g0);
+    g0_NS = max(15, min((C - lost_time_0) - 15, g0_NS));
+    g0_EW = (C - lost_time_0) - g0_NS;
+    
+    g5_NS = round(g5_base + delta_g5);
+    g5_NS = max(15, min((C - lost_time_5) - 15, g5_NS));
+    g5_EW = (C - lost_time_5) - g5_NS;
+    
     green_log(cyc, :) = [g0_NS, g0_EW, g5_NS, g5_EW];
     
-    % phase transition switching times
     t0_y1_start = g0_NS;
     t0_g2_start = g0_NS + 5;
     t0_y2_start = t0_g2_start + g0_EW;
@@ -68,24 +80,16 @@ for cyc = 1:num_cycles
     t5_y2_start = t5_g2_start + g5_EW;
     
     for t = 1:C
-        if t <= t0_y1_start
-            p0 = 0;
-        elseif t <= t0_g2_start
-            p0 = 1;
-        elseif t <= t0_y2_start
-            p0 = 2; 
-        else
-            p0 = 3; 
+        if t <= t0_y1_start,       p0 = 0;
+        elseif t <= t0_g2_start,   p0 = 1;
+        elseif t <= t0_y2_start,   p0 = 2;
+        else,                       p0 = 3; 
         end
         
-        if t <= t5_y1_start
-            p5 = 0; 
-        elseif t <= t5_g2_start
-            p5 = 1; 
-        elseif t <= t5_y2_start
-            p5 = 2; 
-        else
-            p5 = 3; 
+        if t <= t5_y1_start,       p5 = 0;
+        elseif t <= t5_g2_start,   p5 = 1;
+        elseif t <= t5_y2_start,   p5 = 2;
+        else,                       p5 = 3; 
         end
         
         py.traci.trafficlight().setPhase('0', int32(p0));
